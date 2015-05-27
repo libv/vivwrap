@@ -30,20 +30,8 @@
 #include <string.h>
 #include <dlfcn.h>
 #include <fcntl.h>
-
-static pthread_mutex_t serializer[1] = { PTHREAD_MUTEX_INITIALIZER };
-
-static inline void
-serialized_start(const char *func)
-{
-	pthread_mutex_lock(serializer);
-}
-
-static inline void
-serialized_stop(void)
-{
-	pthread_mutex_unlock(serializer);
-}
+#include <sys/ioctl.h>
+#include <asm/ioctl.h>
 
 /*
  *
@@ -142,10 +130,8 @@ open(const char* path, int flags, ...)
 	int ret;
 	int galcore = 0;
 
-	if (!strcmp(path, "/dev/galcore")) {
+	if (!strcmp(path, "/dev/galcore"))
 		galcore = 1;
-		serialized_start(__func__);
-	}
 
 	if (!orig_open)
 		orig_open = libc_dlsym(__func__);
@@ -170,9 +156,6 @@ open(const char* path, int flags, ...)
 		}
 	}
 
-	if (galcore)
-		serialized_stop();
-
 	return ret;
 }
 
@@ -186,9 +169,6 @@ close(int fd)
 {
 	int ret;
 
-	if (fd == dev_galcore_fd)
-	    	serialized_start(__func__);
-
 	if (!orig_close)
 		orig_close = libc_dlsym(__func__);
 
@@ -199,8 +179,134 @@ close(int fd)
 
 	ret = orig_close(fd);
 
-	if (fd == dev_galcore_fd)
-		serialized_stop();
+	return ret;
+}
+
+/*
+ *
+ */
+static int galcore_ioctl(int request, void *data);
+static int (*orig_ioctl)(int fd, unsigned long request, ...);
+
+int
+ioctl(int fd, unsigned long request, ...)
+{
+	int ioc_size = _IOC_SIZE(request);
+	int ret;
+
+	if (!orig_ioctl)
+		orig_ioctl = libc_dlsym(__func__);
+
+	/* Vivante is soo broken. */
+	if (ioc_size || (fd == dev_galcore_fd)) {
+		va_list args;
+		void *ptr;
+
+		va_start(args, request);
+		ptr = va_arg(args, void *);
+		va_end(args);
+
+		if (fd == dev_galcore_fd)
+			ret = galcore_ioctl(request, ptr);
+		else
+			ret = orig_ioctl(fd, request, ptr);
+	} else {
+		ret = orig_ioctl(fd, request);
+	}
+
+	return ret;
+}
+
+char *
+ioctl_dir_string(int request)
+{
+	switch (_IOC_DIR(request)) {
+	default: /* cannot happen */
+	case 0x00:
+		return "_IO";
+	case 0x01:
+		return "_IOW";
+	case 0x02:
+		return "_IOR";
+	case 0x03:
+		return "_IOWR";
+	}
+}
+
+
+static int
+galcore_ioctl(int request, void *data)
+{
+	int ioc_type = _IOC_TYPE(request);
+	int ioc_nr = _IOC_NR(request);
+	char *ioc_string = ioctl_dir_string(request);
+	//int i;
+	int ret;
+
+#if 0
+	if (!ioctl_table) {
+		if ((ioc_type == GALCORE_IOC_CORE_BASE) &&
+		    (ioc_nr == _GALCORE_UK_GET_API_VERSION_R3P1))
+			ioctl_table = dev_galcore_ioctls_r3p1;
+		else
+			ioctl_table = dev_galcore_ioctls;
+	}
+
+	for (i = 0; ioctl_table[i].name; i++) {
+		if ((ioctl_table[i].type == ioc_type) &&
+		    (ioctl_table[i].nr == ioc_nr)) {
+			ioctl = &ioctl_table[i];
+			break;
+		}
+	}
+
+	if (!ioctl) {
+		char *name = ioc_type_name(ioc_type);
+
+		if (name)
+			wrap_log("/* Error: No galcore ioctl wrapping implemented for %s:%02X */\n",
+				 name, ioc_nr);
+		else
+			wrap_log("/* Error: No galcore ioctl wrapping implemented for %02X:%02X */\n",
+				 ioc_type, ioc_nr);
+
+	}
+
+	if (ioctl && ioctl->pre)
+		ioctl->pre(data);
+#endif
+
+	if (data)
+		ret = orig_ioctl(dev_galcore_fd, request, data);
+	else
+		ret = orig_ioctl(dev_galcore_fd, request);
+
+#if 0
+	if (ret == -EPERM) {
+		if ((ioc_type == GALCORE_IOC_CORE_BASE) &&
+		    (ioc_nr == _GALCORE_UK_GET_API_VERSION))
+			ioctl_table = dev_galcore_ioctls_r3p1;
+	}
+
+	if (ioctl && !ioctl->pre && !ioctl->post) {
+		if (data)
+			wrap_log("/* IOCTL %s(%s) %p = %d */\n",
+				 ioc_string, ioctl->name, data, ret);
+		else
+			wrap_log("/* IOCTL %s(%s) = %d */\n",
+				 ioc_string, ioctl->name, ret);
+	}
+
+	if (ioctl && ioctl->post)
+		ioctl->post(data, ret);
+#else
+	if (data)
+		wrap_log("/* IOCTL %s(%d, %d) %p = %d */\n",
+			 ioc_string, ioc_type, ioc_nr, data, ret);
+	else
+		wrap_log("/* IOCTL %s(%d, %d) = %d */\n",
+			 ioc_string, ioc_type, ioc_nr, ret);
+#endif
 
 	return ret;
 }
