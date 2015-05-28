@@ -590,7 +590,7 @@ viv_pool(gcePOOL pool)
 static int
 hook_AllocateLinearVideoMemory_pre(const char *command, int hardware, void *data)
 {
-	struct  _gcsHAL_ALLOCATE_LINEAR_VIDEO_MEMORY *alloc = data;
+	struct _gcsHAL_ALLOCATE_LINEAR_VIDEO_MEMORY *alloc = data;
 	const char *name = viv_hardware_type(hardware);
 	const char *type = viv_surf_type(alloc->type);
 	const char *pool = viv_pool(alloc->pool);
@@ -608,7 +608,7 @@ hook_AllocateLinearVideoMemory_pre(const char *command, int hardware, void *data
 static int
 hook_AllocateLinearVideoMemory_post(const char *command, int hardware, void *data, int ioctl_ret)
 {
-	struct  _gcsHAL_ALLOCATE_LINEAR_VIDEO_MEMORY *alloc = data;
+	struct _gcsHAL_ALLOCATE_LINEAR_VIDEO_MEMORY *alloc = data;
 	const char *name = viv_hardware_type(hardware);
 	const char *pool = viv_pool(alloc->pool);
 
@@ -624,7 +624,7 @@ hook_AllocateLinearVideoMemory_post(const char *command, int hardware, void *dat
 static int
 hook_LockVideoMemory_pre(const char *command, int hardware, void *data)
 {
-	struct  _gcsHAL_LOCK_VIDEO_MEMORY *lock = data;
+	struct _gcsHAL_LOCK_VIDEO_MEMORY *lock = data;
 	const char *name = viv_hardware_type(hardware);
 
 	wrap_log("%s(%s) = {\n", command, name);
@@ -638,12 +638,145 @@ hook_LockVideoMemory_pre(const char *command, int hardware, void *data)
 static int
 hook_LockVideoMemory_post(const char *command, int hardware, void *data, int ioctl_ret)
 {
-	struct  _gcsHAL_LOCK_VIDEO_MEMORY *lock = data;
+	struct _gcsHAL_LOCK_VIDEO_MEMORY *lock = data;
 	const char *name = viv_hardware_type(hardware);
 
 	wrap_log("%s(%s) = {\n", command, name);
 	wrap_log("\t.address = 0x%08lX,\n", lock->address);
 	wrap_log("\t.memory = 0x%08llX,\n", lock->memory);
+	wrap_log("} = %d;\n", ioctl_ret);
+
+	return 0;
+}
+
+static int
+hook_Commit_pre(const char *command, int hardware, void *data)
+{
+	struct _gcsHAL_COMMIT *commit = data;
+	const char *name = viv_hardware_type(hardware);
+
+	wrap_log("%s(%s) = {\n", command, name);
+	wrap_log("\t.queue = 0x%08llX,\n", commit->queue);
+	wrap_log("};\n");
+
+	return 0;
+}
+
+static int
+hook_Commit_post(const char *command, int hardware, void *data, int ioctl_ret)
+{
+	struct _gcsHAL_COMMIT *commit = data;
+	const char *name = viv_hardware_type(hardware);
+
+	wrap_log("%s(%s) = {\n", command, name);
+	wrap_log("\t.queue = 0x%08llX,\n", commit->queue);
+	wrap_log("} = %d;\n", ioctl_ret);
+
+	return 0;
+}
+
+static int
+hook_UnlockVideoMemory_pre(const char *command, int hardware, void *data)
+{
+	struct _gcsHAL_UNLOCK_VIDEO_MEMORY *unlock = data;
+	const char *name = viv_hardware_type(hardware);
+	const char *type = viv_surf_type(unlock->type);
+
+	wrap_log("%s(%s) = {\n", command, name);
+	wrap_log("\t.node = 0x%08llX,\n", unlock->node);
+	wrap_log("\t.type = %s,\n", type);
+	wrap_log("\t.asynchroneous = 0x%08llX,\n", unlock->asynchroneous);
+	wrap_log("};\n");
+
+	return 0;
+}
+
+static int
+hook_UnlockVideoMemory_post(const char *command, int hardware, void *data, int ioctl_ret)
+{
+	struct _gcsHAL_UNLOCK_VIDEO_MEMORY *unlock = data;
+	const char *name = viv_hardware_type(hardware);
+
+	wrap_log("%s(%s) = {\n", command, name);
+	wrap_log("\t.node = 0x%08llX,\n", unlock->node);
+	wrap_log("} = %d;\n", ioctl_ret);
+
+	return 0;
+}
+
+static int
+hook_EventCommit_pre(const char *command, int hardware, void *data)
+{
+	struct _gcsHAL_EVENT_COMMIT *commit = data;
+	const char *name = viv_hardware_type(hardware);
+
+	wrap_log("%s(%s) = {\n", command, name);
+	wrap_log("\t.queue = 0x%08llX,\n", commit->queue);
+	wrap_log("};\n");
+
+	return 0;
+}
+
+static int
+hook_EventCommit_post(const char *command, int hardware, void *data, int ioctl_ret)
+{
+	struct _gcsHAL_EVENT_COMMIT *commit = data;
+	const char *name = viv_hardware_type(hardware);
+
+	wrap_log("%s(%s) = {\n", command, name);
+	wrap_log("\t.queue = 0x%08llX,\n", commit->queue);
+	wrap_log("} = %d;\n", ioctl_ret);
+
+	return 0;
+}
+
+static int
+hook_Detach_pre(const char *command, int hardware, void *data)
+{
+	struct _gcsHAL_DETACH *detach = data;
+	const char *name = viv_hardware_type(hardware);
+
+	wrap_log("%s(%s) = {\n", command, name);
+	wrap_log("\t.context = 0x%08llX,\n", detach->context);
+	wrap_log("};\n");
+
+	return 0;
+}
+
+static int
+hook_Detach_post(const char *command, int hardware, void *data, int ioctl_ret)
+{
+	struct _gcsHAL_DETACH *detach = data;
+	const char *name = viv_hardware_type(hardware);
+
+	wrap_log("%s(%s) = {\n", command, name);
+	wrap_log("\t.context = 0x%08llX,\n", detach->context);
+	wrap_log("} = %d;\n", ioctl_ret);
+
+	return 0;
+}
+
+static int
+hook_FreeVideoMemory_pre(const char *command, int hardware, void *data)
+{
+	struct _gcsHAL_FREE_VIDEO_MEMORY *free = data;
+	const char *name = viv_hardware_type(hardware);
+
+	wrap_log("%s(%s) = {\n", command, name);
+	wrap_log("\t.node = 0x%08llX,\n", free->node);
+	wrap_log("};\n");
+
+	return 0;
+}
+
+static int
+hook_FreeVideoMemory_post(const char *command, int hardware, void *data, int ioctl_ret)
+{
+	struct _gcsHAL_FREE_VIDEO_MEMORY *free = data;
+	const char *name = viv_hardware_type(hardware);
+
+	wrap_log("%s(%s) = {\n", command, name);
+	wrap_log("\t.node = 0x%08llX,\n", free->node);
 	wrap_log("} = %d;\n", ioctl_ret);
 
 	return 0;
@@ -663,18 +796,18 @@ struct {
 	{gcvHAL_FREE_CONTIGUOUS_MEMORY, "FREE_CONTIGUOUS_MEMORY", hook_unknown_pre, hook_unknown_post},
 	{gcvHAL_ALLOCATE_VIDEO_MEMORY, "ALLOCATE_VIDEO_MEMORY", hook_unknown_pre, hook_unknown_post},
 	{gcvHAL_ALLOCATE_LINEAR_VIDEO_MEMORY, "ALLOCATE_LINEAR_VIDEO_MEMORY", hook_AllocateLinearVideoMemory_pre, hook_AllocateLinearVideoMemory_post},
-	{gcvHAL_FREE_VIDEO_MEMORY, "FREE_VIDEO_MEMORY", hook_unknown_pre, hook_unknown_post},
+	{gcvHAL_FREE_VIDEO_MEMORY, "FREE_VIDEO_MEMORY", hook_FreeVideoMemory_pre, hook_FreeVideoMemory_post},
 	{gcvHAL_MAP_MEMORY, "MAP_MEMORY", hook_unknown_pre, hook_unknown_post},
 	{gcvHAL_UNMAP_MEMORY, "UNMAP_MEMORY", hook_unknown_pre, hook_unknown_post},
 	{gcvHAL_MAP_USER_MEMORY, "MAP_USER_MEMORY", hook_unknown_pre, hook_unknown_post},
 	{gcvHAL_UNMAP_USER_MEMORY, "UNMAP_USER_MEMORY", hook_unknown_pre, hook_unknown_post},
 	{gcvHAL_LOCK_VIDEO_MEMORY, "LOCK_VIDEO_MEMORY", hook_LockVideoMemory_pre, hook_LockVideoMemory_post},
-	{gcvHAL_UNLOCK_VIDEO_MEMORY, "UNLOCK_VIDEO_MEMORY", hook_unknown_pre, hook_unknown_post},
-	{gcvHAL_EVENT_COMMIT, "EVENT_COMMIT", hook_unknown_pre, hook_unknown_post},
+	{gcvHAL_UNLOCK_VIDEO_MEMORY, "UNLOCK_VIDEO_MEMORY", hook_UnlockVideoMemory_pre, hook_UnlockVideoMemory_post},
+	{gcvHAL_EVENT_COMMIT, "EVENT_COMMIT", hook_EventCommit_pre, hook_EventCommit_post},
 	{gcvHAL_USER_SIGNAL, "USER_SIGNAL", hook_UserSignal_pre, hook_UserSignal_post},
 	{gcvHAL_SIGNAL, "SIGNAL", hook_unknown_pre, hook_unknown_post},
 	{gcvHAL_WRITE_DATA, "WRITE_DATA", hook_unknown_pre, hook_unknown_post},
-	{gcvHAL_COMMIT, "COMMIT", hook_unknown_pre, hook_unknown_post},
+	{gcvHAL_COMMIT, "COMMIT", hook_Commit_pre, hook_Commit_post},
 	{gcvHAL_STALL, "STALL", hook_unknown_pre, hook_unknown_post},
 	{gcvHAL_READ_REGISTER, "READ_REGISTER", hook_unknown_pre, hook_unknown_post},
 	{gcvHAL_WRITE_REGISTER, "WRITE_REGISTER", hook_unknown_pre, hook_unknown_post},
@@ -699,7 +832,7 @@ struct {
 	{gcvHAL_VERSION, "VERSION", hook_empty_pre, hook_Version_post},
 	{gcvHAL_CHIP_INFO, "CHIP_INFO", hook_empty_pre, hook_ChipInfo_post},
 	{gcvHAL_ATTACH, "ATTACH", hook_empty_pre, hook_Attach_post},
-	{gcvHAL_DETACH, "DETACH", hook_unknown_pre, hook_unknown_post},
+	{gcvHAL_DETACH, "DETACH", hook_Detach_pre, hook_Detach_post},
 	{gcvHAL_COMPOSE, "COMPOSE", hook_unknown_pre, hook_unknown_post},
 	{gcvHAL_SET_TIMEOUT, "SET_TIMEOUT", hook_unknown_pre, hook_unknown_post},
 	{gcvHAL_GET_FRAME_INFO, "GET_FRAME_INFO", hook_unknown_pre, hook_unknown_post},
