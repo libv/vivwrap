@@ -1,25 +1,19 @@
 /*
  * Copyright (c) 2011-2015 Luc Verhaegen <libv@skynet.be>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sub license,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the license, or
+ * (at your option) any later version.
  *
- * The above copyright notice and this permission notice (including the
- * next paragraph) shall be included in all copies or substantial portions
- * of the Software.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
- *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not write to the Free Software
+ * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
 #include <stdarg.h>
@@ -32,6 +26,7 @@
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <asm/ioctl.h>
+#include <stdint.h>
 
 /*
  *
@@ -74,6 +69,8 @@ wrap_log(const char *format, ...)
 	va_start(args, format);
 	ret = vfprintf(viv_wrap_log, format, args);
 	va_end(args);
+
+	fflush(viv_wrap_log);
 
 	return ret;
 }
@@ -217,96 +214,135 @@ ioctl(int fd, unsigned long request, ...)
 	return ret;
 }
 
-char *
-ioctl_dir_string(int request)
-{
-	switch (_IOC_DIR(request)) {
-	default: /* cannot happen */
-	case 0x00:
-		return "_IO";
-	case 0x01:
-		return "_IOW";
-	case 0x02:
-		return "_IOR";
-	case 0x03:
-		return "_IOWR";
-	}
-}
+#include "gc_hal_base.h"
+#include "gc_hal_profiler.h"
+#include "gc_hal_driver.h"
 
+typedef struct _DRIVER_ARGS
+{
+    gctUINT64               InputBuffer;
+    gctUINT64               InputBufferSize;
+    gctUINT64               OutputBuffer;
+    gctUINT64               OutputBufferSize;
+}
+DRIVER_ARGS;
+
+struct {
+	int command;
+	char *name;
+} command_table[] = {
+	{gcvHAL_QUERY_VIDEO_MEMORY, "QUERY_VIDEO_MEMORY"},
+	{gcvHAL_QUERY_CHIP_IDENTITY, "QUERY_CHIP_IDENTITY"},
+	{gcvHAL_ALLOCATE_NON_PAGED_MEMORY, "ALLOCATE_NON_PAGED_MEMORY"},
+	{gcvHAL_FREE_NON_PAGED_MEMORY, "FREE_NON_PAGED_MEMORY"},
+	{gcvHAL_ALLOCATE_CONTIGUOUS_MEMORY, "ALLOCATE_CONTIGUOUS_MEMORY"},
+	{gcvHAL_FREE_CONTIGUOUS_MEMORY, "FREE_CONTIGUOUS_MEMORY"},
+	{gcvHAL_ALLOCATE_VIDEO_MEMORY, "ALLOCATE_VIDEO_MEMORY"},
+	{gcvHAL_ALLOCATE_LINEAR_VIDEO_MEMORY, "ALLOCATE_LINEAR_VIDEO_MEMORY"},
+	{gcvHAL_FREE_VIDEO_MEMORY, "FREE_VIDEO_MEMORY"},
+	{gcvHAL_MAP_MEMORY, "MAP_MEMORY"},
+	{gcvHAL_UNMAP_MEMORY, "UNMAP_MEMORY"},
+	{gcvHAL_MAP_USER_MEMORY, "MAP_USER_MEMORY"},
+	{gcvHAL_UNMAP_USER_MEMORY, "UNMAP_USER_MEMORY"},
+	{gcvHAL_LOCK_VIDEO_MEMORY, "LOCK_VIDEO_MEMORY"},
+	{gcvHAL_UNLOCK_VIDEO_MEMORY, "UNLOCK_VIDEO_MEMORY"},
+	{gcvHAL_EVENT_COMMIT, "EVENT_COMMIT"},
+	{gcvHAL_USER_SIGNAL, "USER_SIGNAL"},
+	{gcvHAL_SIGNAL, "SIGNAL"},
+	{gcvHAL_WRITE_DATA, "WRITE_DATA"},
+	{gcvHAL_COMMIT, "COMMIT"},
+	{gcvHAL_STALL, "STALL"},
+	{gcvHAL_READ_REGISTER, "READ_REGISTER"},
+	{gcvHAL_WRITE_REGISTER, "WRITE_REGISTER"},
+	{gcvHAL_GET_PROFILE_SETTING, "GET_PROFILE_SETTING"},
+	{gcvHAL_SET_PROFILE_SETTING, "SET_PROFILE_SETTING"},
+	{gcvHAL_READ_ALL_PROFILE_REGISTERS, "READ_ALL_PROFILE_REGISTERS"},
+	{gcvHAL_PROFILE_REGISTERS_2D, "PROFILE_REGISTERS_2D"},
+#if VIVANTE_PROFILER_PERDRAW
+	{gcvHAL_READ_PROFILER_REGISTER_SETTING, "READ_PROFILER_REGISTER_SETTING"},
+#endif
+	{gcvHAL_SET_POWER_MANAGEMENT_STATE, "SET_POWER_MANAGEMENT_STATE"},
+	{gcvHAL_QUERY_POWER_MANAGEMENT_STATE, "QUERY_POWER_MANAGEMENT_STATE"},
+	{gcvHAL_GET_BASE_ADDRESS, "GET_BASE_ADDRESS"},
+	{gcvHAL_SET_IDLE, "SET_IDLE"},
+	{gcvHAL_QUERY_KERNEL_SETTINGS, "QUERY_KERNEL_SETTINGS"},
+	{gcvHAL_RESET, "RESET"},
+	{gcvHAL_MAP_PHYSICAL, "MAP_PHYSICAL"},
+	{gcvHAL_DEBUG, "DEBUG"},
+	{gcvHAL_CACHE, "CACHE"},
+	{gcvHAL_TIMESTAMP, "TIMESTAMP"},
+	{gcvHAL_DATABASE, "DATABASE"},
+	{gcvHAL_VERSION, "VERSION"},
+	{gcvHAL_CHIP_INFO, "CHIP_INFO"},
+	{gcvHAL_ATTACH, "ATTACH"},
+	{gcvHAL_DETACH, "DETACH"},
+	{gcvHAL_COMPOSE, "COMPOSE"},
+	{gcvHAL_SET_TIMEOUT, "SET_TIMEOUT"},
+	{gcvHAL_GET_FRAME_INFO, "GET_FRAME_INFO"},
+	{gcvHAL_GET_SHARED_INFO, "GET_SHARED_INFO"},
+	{gcvHAL_SET_SHARED_INFO, "SET_SHARED_INFO"},
+	{gcvHAL_QUERY_COMMAND_BUFFER, "QUERY_COMMAND_BUFFER"},
+	{gcvHAL_COMMIT_DONE, "COMMIT_DONE"},
+	{gcvHAL_DUMP_GPU_STATE, "DUMP_GPU_STATE"},
+	{gcvHAL_DUMP_EVENT, "DUMP_EVENT"},
+	{gcvHAL_ALLOCATE_VIRTUAL_COMMAND_BUFFER, "ALLOCATE_VIRTUAL_COMMAND_BUFFER"},
+	{gcvHAL_FREE_VIRTUAL_COMMAND_BUFFER, "FREE_VIRTUAL_COMMAND_BUFFER"},
+	{gcvHAL_SET_FSCALE_VALUE, "SET_FSCALE_VALUE"},
+	{gcvHAL_GET_FSCALE_VALUE, "GET_FSCALE_VALUE"},
+	{gcvHAL_QUERY_RESET_TIME_STAMP, "QUERY_RESET_TIME_STAMP"},
+	{gcvHAL_SYNC_POINT, "SYNC_POINT"},
+	{gcvHAL_CREATE_NATIVE_FENCE, "CREATE_NATIVE_FENCE"},
+	{gcvHAL_VIDMEM_DATABASE, "VIDMEM_DATABASE"},
+};
 
 static int
 galcore_ioctl(int request, void *data)
 {
-	int ioc_type = _IOC_TYPE(request);
-	int ioc_nr = _IOC_NR(request);
-	char *ioc_string = ioctl_dir_string(request);
-	//int i;
+	DRIVER_ARGS *args = data;
+	gcsHAL_INTERFACE *input, *output;
 	int ret;
 
-#if 0
-	if (!ioctl_table) {
-		if ((ioc_type == GALCORE_IOC_CORE_BASE) &&
-		    (ioc_nr == _GALCORE_UK_GET_API_VERSION_R3P1))
-			ioctl_table = dev_galcore_ioctls_r3p1;
-		else
-			ioctl_table = dev_galcore_ioctls;
+	if (request != IOCTL_GCHAL_INTERFACE) {
+		fprintf(stderr, "%s: wrong request: 0x%X\n", __func__,
+			(unsigned int) request);
+		return -1;
 	}
 
-	for (i = 0; ioctl_table[i].name; i++) {
-		if ((ioctl_table[i].type == ioc_type) &&
-		    (ioctl_table[i].nr == ioc_nr)) {
-			ioctl = &ioctl_table[i];
-			break;
-		}
+	if (!data) {
+		fprintf(stderr, "%s: no data???\n", __func__);
+		return -1;
 	}
 
-	if (!ioctl) {
-		char *name = ioc_type_name(ioc_type);
-
-		if (name)
-			wrap_log("/* Error: No galcore ioctl wrapping implemented for %s:%02X */\n",
-				 name, ioc_nr);
-		else
-			wrap_log("/* Error: No galcore ioctl wrapping implemented for %02X:%02X */\n",
-				 ioc_type, ioc_nr);
-
+	if ((args->InputBufferSize  != sizeof(gcsHAL_INTERFACE)) ||
+	    (args->OutputBufferSize != sizeof(gcsHAL_INTERFACE))) {
+		fprintf(stderr, "%s: wrong data sizes: %lld/%lld\n", __func__,
+			args->InputBufferSize, args->OutputBufferSize);
+		return -1;
 	}
 
-	if (ioctl && ioctl->pre)
-		ioctl->pre(data);
-#endif
+	input = (gcsHAL_INTERFACE *) ((uint32_t) args->InputBuffer);
+	output = (gcsHAL_INTERFACE *) ((uint32_t) args->OutputBuffer);
 
-	if (data)
-		ret = orig_ioctl(dev_galcore_fd, request, data);
-	else
-		ret = orig_ioctl(dev_galcore_fd, request);
-
-#if 0
-	if (ret == -EPERM) {
-		if ((ioc_type == GALCORE_IOC_CORE_BASE) &&
-		    (ioc_nr == _GALCORE_UK_GET_API_VERSION))
-			ioctl_table = dev_galcore_ioctls_r3p1;
+	if (!input) {
+		fprintf(stderr, "%s: missing input\n", __func__);
+		return -1;
 	}
 
-	if (ioctl && !ioctl->pre && !ioctl->post) {
-		if (data)
-			wrap_log("/* IOCTL %s(%s) %p = %d */\n",
-				 ioc_string, ioctl->name, data, ret);
-		else
-			wrap_log("/* IOCTL %s(%s) = %d */\n",
-				 ioc_string, ioctl->name, ret);
+	if (!output) {
+		fprintf(stderr, "%s: missing output\n", __func__);
+		return -1;
 	}
 
-	if (ioctl && ioctl->post)
-		ioctl->post(data, ret);
-#else
-	if (data)
-		wrap_log("/* IOCTL %s(%d, %d) %p = %d */\n",
-			 ioc_string, ioc_type, ioc_nr, data, ret);
-	else
-		wrap_log("/* IOCTL %s(%d, %d) = %d */\n",
-			 ioc_string, ioc_type, ioc_nr, ret);
-#endif
+	wrap_log("IOCTL %s -> %s\n",
+		 command_table[input->command].name,
+		 command_table[output->command].name);
+
+	ret = orig_ioctl(dev_galcore_fd, request, data);
+
+	wrap_log("IOCTL %s -> %s = %d\n",
+		 command_table[input->command].name,
+		 command_table[output->command].name,
+		 ret);
 
 	return ret;
 }
