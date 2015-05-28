@@ -300,6 +300,7 @@ galcore_ioctl(int request, void *data)
 {
 	DRIVER_ARGS *args = data;
 	gcsHAL_INTERFACE *input, *output;
+	char *command_name, *hardware;
 	int ret;
 
 	if (request != IOCTL_GCHAL_INTERFACE) {
@@ -333,16 +334,42 @@ galcore_ioctl(int request, void *data)
 		return -1;
 	}
 
-	wrap_log("IOCTL %s -> %s\n",
-		 command_table[input->command].name,
-		 command_table[output->command].name);
+	command_name = command_table[input->command].name;
+
+	if (input != output) {
+		fprintf(stderr, "%s: input buffer does not match output.\n",
+			command_name);
+		wrap_log("%s: input buffer does not match output.\n",
+			 command_name);
+		return -1;
+	}
+
+	switch(input->hardwareType) {
+	case 1:
+		hardware = "3D";
+		break;
+	case 2:
+		hardware = "2D";
+		break;
+	case 3:
+		hardware = "2D/3D";
+		break;
+	case 4:
+		hardware = "VG";
+		break;
+	default:
+		fprintf(stderr, "%s: unknown hardware type %d\n",
+			command_name, input->hardwareType);
+		wrap_log("%s: unknown hardware type %d\n",
+			command_name, input->hardwareType);
+		return -1;
+	}
+
+	wrap_log("%s(%s)\n", command_name, hardware);
 
 	ret = orig_ioctl(dev_galcore_fd, request, data);
 
-	wrap_log("IOCTL %s -> %s = %d\n",
-		 command_table[input->command].name,
-		 command_table[output->command].name,
-		 ret);
+	wrap_log("%s(%s) = %d\n", command_name, hardware, ret);
 
 	return ret;
 }
