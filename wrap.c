@@ -214,6 +214,7 @@ ioctl(int fd, unsigned long request, ...)
 	return ret;
 }
 
+#define gcdENABLE_VG 1
 #include "gc_hal_base.h"
 #include "gc_hal_profiler.h"
 #include "gc_hal_driver.h"
@@ -318,12 +319,12 @@ hook_QueryVideoMemory_post(const char *command, int hardware, void *data, int io
 	struct _gcsHAL_QUERY_VIDEO_MEMORY *memory = data;
 
 	wrap_log("%s = {\n", command);
-	wrap_log("\tinternalPhysical = 0x%08lX,\n", memory->internalPhysical);
-	wrap_log("\tinternalSize = %lld,\n", memory->internalSize);
-	wrap_log("\texternalPhysical = 0x%08lX,\n", memory->externalPhysical);
-	wrap_log("\texternalSize = %lld,\n", memory->externalSize);
-	wrap_log("\tcontiguousPhysical = 0x%08lX,\n", memory->contiguousPhysical);
-	wrap_log("\tcontiguousSize = %lld,\n", memory->contiguousSize);
+	wrap_log("\t.internalPhysical = 0x%08lX,\n", memory->internalPhysical);
+	wrap_log("\t.internalSize = %lld,\n", memory->internalSize);
+	wrap_log("\t.externalPhysical = 0x%08lX,\n", memory->externalPhysical);
+	wrap_log("\t.externalSize = %lld,\n", memory->externalSize);
+	wrap_log("\t.contiguousPhysical = 0x%08lX,\n", memory->contiguousPhysical);
+	wrap_log("\t.contiguousSize = %lld,\n", memory->contiguousSize);
 	wrap_log("};\n");
 
 	return 0;
@@ -336,33 +337,317 @@ hook_QueryChipIdentity_post(const char *command, int hardware, void *data, int i
 	const char *name = viv_hardware_type(hardware);
 
 	wrap_log("%s(%s) = {\n", command, name);
-	wrap_log("\tchipModel = %d,\n", identity->chipModel);
-	wrap_log("\tchipRevision = 0x%08lX,\n", identity->chipRevision);
-	wrap_log("\tchipFeatures = 0x%08lX,\n", identity->chipFeatures);
-	wrap_log("\tchipMinorFeatures = 0x%08lX,\n", identity->chipMinorFeatures);
-	wrap_log("\tchipMinorFeatures1 = 0x%08lX,\n", identity->chipMinorFeatures1);
-	wrap_log("\tchipMinorFeatures2 = 0x%08lX,\n", identity->chipMinorFeatures2);
-	wrap_log("\tchipMinorFeatures3 = 0x%08lX,\n", identity->chipMinorFeatures3);
-	wrap_log("\tchipMinorFeatures4 = 0x%08lX,\n", identity->chipMinorFeatures4);
-	wrap_log("\tstreamCount = 0x%08lX,\n", identity->streamCount);
-	wrap_log("\tregisterMax = 0x%08lX,\n", identity->registerMax);
-	wrap_log("\tthreadCount = 0x%08lX,\n", identity->threadCount);
-	wrap_log("\tshaderCoreCount = 0x%08lX,\n", identity->shaderCoreCount);
-	wrap_log("\tvertexCacheSize = 0x%08lX,\n", identity->vertexCacheSize);
-	wrap_log("\tvertexOutputBufferSize = 0x%08lX,\n", identity->vertexOutputBufferSize);
-	wrap_log("\tpixelPipes = 0x%08lX,\n", identity->pixelPipes);
-	wrap_log("\tinstructionCount = 0x%08lX,\n", identity->instructionCount);
-	wrap_log("\tnumConstants = 0x%08lX,\n", identity->numConstants);
-	wrap_log("\tbufferSize = 0x%08lX,\n", identity->bufferSize);
-	wrap_log("\tvaryingsCount = 0x%08lX,\n", identity->varyingsCount);
-	wrap_log("\tsuperTileMode = 0x%08lX,\n", identity->superTileMode);
-	wrap_log("\tchip2DControl = 0x%08lX,\n", identity->chip2DControl);
+	wrap_log("\t.chipModel = %d,\n", identity->chipModel);
+	wrap_log("\t.chipRevision = 0x%08lX,\n", identity->chipRevision);
+	wrap_log("\t.chipFeatures = 0x%08lX,\n", identity->chipFeatures);
+	wrap_log("\t.chipMinorFeatures = 0x%08lX,\n", identity->chipMinorFeatures);
+	wrap_log("\t.chipMinorFeatures1 = 0x%08lX,\n", identity->chipMinorFeatures1);
+	wrap_log("\t.chipMinorFeatures2 = 0x%08lX,\n", identity->chipMinorFeatures2);
+	wrap_log("\t.chipMinorFeatures3 = 0x%08lX,\n", identity->chipMinorFeatures3);
+	wrap_log("\t.chipMinorFeatures4 = 0x%08lX,\n", identity->chipMinorFeatures4);
+	wrap_log("\t.streamCount = 0x%08lX,\n", identity->streamCount);
+	wrap_log("\t.registerMax = 0x%08lX,\n", identity->registerMax);
+	wrap_log("\t.threadCount = 0x%08lX,\n", identity->threadCount);
+	wrap_log("\t.shaderCoreCount = 0x%08lX,\n", identity->shaderCoreCount);
+	wrap_log("\t.vertexCacheSize = 0x%08lX,\n", identity->vertexCacheSize);
+	wrap_log("\t.vertexOutputBufferSize = 0x%08lX,\n", identity->vertexOutputBufferSize);
+	wrap_log("\t.pixelPipes = 0x%08lX,\n", identity->pixelPipes);
+	wrap_log("\t.instructionCount = 0x%08lX,\n", identity->instructionCount);
+	wrap_log("\t.numConstants = 0x%08lX,\n", identity->numConstants);
+	wrap_log("\t.bufferSize = 0x%08lX,\n", identity->bufferSize);
+	wrap_log("\t.varyingsCount = 0x%08lX,\n", identity->varyingsCount);
+	wrap_log("\t.superTileMode = 0x%08lX,\n", identity->superTileMode);
+	wrap_log("\t.chip2DControl = 0x%08lX,\n", identity->chip2DControl);
 	wrap_log("};\n");
 
 	return 0;
 }
 
+static int
+hook_Attach_post(const char *command, int hardware, void *data, int ioctl_ret)
+{
+	struct _gcsHAL_ATTACH *attach = data;
+	const char *name = viv_hardware_type(hardware);
 
+	wrap_log("%s(%s) = {\n", command, name);
+	wrap_log("\t.context = 0x%08lX,\n", attach->context);
+	wrap_log("\t.stateCount = %lld,\n", attach->stateCount);
+	wrap_log("};\n");
+
+	return 0;
+}
+
+static int
+hook_AllocateContiguousMemory_pre(const char *command, int hardware, void *data)
+{
+	struct  _gcsHAL_ALLOCATE_CONTIGUOUS_MEMORY *alloc = data;
+	const char *name = viv_hardware_type(hardware);
+
+	wrap_log("%s(%s) = {\n", command, name);
+	wrap_log("\t.bytes = 0x%08llX,\n", alloc->bytes);
+	wrap_log("};\n");
+
+	return 0;
+}
+
+static int
+hook_AllocateContiguousMemory_post(const char *command, int hardware, void *data, int ioctl_ret)
+{
+	struct  _gcsHAL_ALLOCATE_CONTIGUOUS_MEMORY *alloc = data;
+	const char *name = viv_hardware_type(hardware);
+
+	wrap_log("%s(%s) = {\n", command, name);
+	wrap_log("\t.bytes = 0x%08llX,\n", alloc->bytes);
+	wrap_log("\t.address = 0x%08lX,\n", alloc->address);
+	wrap_log("\t.physical = 0x%08lX,\n", alloc->physical);
+	wrap_log("\t.logical = 0x%08llX,\n", alloc->logical);
+	wrap_log("};\n");
+
+	return 0;
+}
+
+static const char *
+viv_user_signal_name(gceUSER_SIGNAL_COMMAND_CODES command)
+{
+	switch(command) {
+	case gcvUSER_SIGNAL_CREATE:
+		return "CREATE";
+	case gcvUSER_SIGNAL_DESTROY:
+		return "DESTROY";
+	case gcvUSER_SIGNAL_SIGNAL:
+		return "SIGNAL";
+	case gcvUSER_SIGNAL_WAIT:
+		return "WAIT";
+	case gcvUSER_SIGNAL_MAP:
+		return "MAP";
+	case gcvUSER_SIGNAL_UNMAP:
+		return "UNMAP";
+	default:
+		return NULL;
+	}
+}
+
+static int
+hook_UserSignal_pre(const char *command, int hardware, void *data)
+{
+	struct  _gcsHAL_USER_SIGNAL *signal = data;
+	const char *name = viv_hardware_type(hardware);
+	const char *signal_command = viv_user_signal_name(signal->command);
+
+	wrap_log("%s(%s) = {\n", command, name);
+	wrap_log("\t.command = %s,\n", signal_command);
+	wrap_log("\t.id = 0x%08lX,\n", signal->id);
+	wrap_log("\t.manualReset = %d,\n", signal->manualReset);
+	wrap_log("\t.wait = 0x%08lX,\n", signal->wait);
+	wrap_log("\t.state = %d,\n", signal->state);
+	wrap_log("};\n");
+
+	return 0;
+}
+
+static int
+hook_UserSignal_post(const char *command, int hardware, void *data, int ioctl_ret)
+{
+	struct  _gcsHAL_USER_SIGNAL *signal = data;
+	const char *name = viv_hardware_type(hardware);
+	const char *signal_command = viv_user_signal_name(signal->command);
+
+	wrap_log("%s(%s) = {\n", command, name);
+	wrap_log("\t.command = %s,\n", signal_command);
+	wrap_log("\t.id = 0x%08lX,\n", signal->id);
+	wrap_log("} = %d;\n", ioctl_ret);
+
+	return 0;
+}
+
+static int
+hook_QueryCommandBuffer_post(const char *command, int hardware, void *data, int ioctl_ret)
+{
+	struct _gcsHAL_QUERY_COMMAND_BUFFER *query = data;
+	struct _gcsCOMMAND_BUFFER_INFO *info = &query->information;
+	const char *name = viv_hardware_type(hardware);
+
+	wrap_log("%s(%s) = {{\n", command, name);
+	wrap_log("\t.feBufferInt = 0x%08lX,\n", info->feBufferInt);
+	wrap_log("\t.tsOverflowInt = 0x%08lX,\n", info->tsOverflowInt);
+	wrap_log("\t.addressMask = 0x%08lX,\n", info->addressMask);
+	wrap_log("\t.addressAlignment = 0x%08lX,\n", info->addressAlignment);
+	wrap_log("\t.commandAlignment = 0x%08lX,\n", info->commandAlignment);
+	wrap_log("\t.stateCommandSize = 0x%08lX,\n", info->stateCommandSize);
+	wrap_log("\t.restartCommandSize = 0x%08lX,\n", info->restartCommandSize);
+	wrap_log("\t.fetchCommandSize = 0x%08lX,\n", info->fetchCommandSize);
+	wrap_log("\t.callCommandSize = 0x%08lX,\n", info->callCommandSize);
+	wrap_log("\t.returnCommandSize = 0x%08lX,\n", info->returnCommandSize);
+	wrap_log("\t.eventCommandSize = 0x%08lX,\n", info->eventCommandSize);
+	wrap_log("\t.endCommandSize = 0x%08lX,\n", info->endCommandSize);
+	wrap_log("\t.staticTailSize = 0x%08lX,\n", info->staticTailSize);
+	wrap_log("\t.dynamicTailSize = 0x%08lX,\n", info->dynamicTailSize);
+	wrap_log("}};\n");
+
+	return 0;
+}
+
+static const char *
+viv_surf_type(gceSURF_TYPE type)
+{
+	switch(type) {
+	case gcvSURF_TYPE_UNKNOWN:
+		return "TYPE_UNKNOWN";
+	case gcvSURF_INDEX:
+		return "INDEX";
+	case gcvSURF_VERTEX:
+		return "VERTEX";
+	case gcvSURF_TEXTURE:
+		return "TEXTURE";
+	case gcvSURF_RENDER_TARGET:
+		return "RENDER_TARGET";
+	case gcvSURF_DEPTH:
+		return "DEPTH";
+	case gcvSURF_BITMAP:
+		return "BITMAP";
+	case gcvSURF_TILE_STATUS:
+		return "TILE_STATUS";
+	case gcvSURF_MASK:
+		return "MASK";
+	case gcvSURF_SCISSOR:
+		return "SCISSOR";
+	case gcvSURF_HIERARCHICAL_DEPTH:
+		return "HIERARCHICAL_DEPTH";
+	case gcvSURF_NUM_TYPES:
+		return "NUM_TYPES";
+	case gcvSURF_NO_TILE_STATUS:
+		return "NO_TILE_STATUS";
+	case gcvSURF_NO_VIDMEM:
+		return "NO_VIDMEM";
+	case gcvSURF_CACHEABLE:
+		return "CACHEABLE";
+	case gcvSURF_FLIP:
+		return "FLIP";
+	case gcvSURF_TILE_STATUS_DIRTY:
+		return "TILE_STATUS_DIRTY";
+	case gcvSURF_LINEAR:
+		return "LINEAR";
+	case gcvSURF_VG:
+		return "VG";
+	case gcvSURF_TEXTURE_LINEAR:
+		return "TEXTURE_LINEAR";
+	case gcvSURF_RENDER_TARGET_NO_TILE_STATUS:
+		return "RENDER_TARGET_NO_TILE_STATUS";
+	case gcvSURF_RENDER_TARGET_TS_DIRTY:
+		return "RENDER_TARGET_TS_DIRTY";
+	case gcvSURF_DEPTH_NO_TILE_STATUS:
+		return "DEPTH_NO_TILE_STATUS";
+	case gcvSURF_DEPTH_TS_DIRTY:
+		return "DEPTH_TS_DIRTY";
+	case gcvSURF_BITMAP_NO_VIDMEM:
+		return "BITMAP_NO_VIDMEM";
+	case gcvSURF_TEXTURE_NO_VIDMEM:
+		return "TEXTURE_NO_VIDMEM";
+	case gcvSURF_CACHEABLE_BITMAP_NO_VIDMEM:
+		return "CACHEABLE_BITMAP_NO_VIDMEM";
+	case gcvSURF_CACHEABLE_BITMAP:
+		return "CACHEABLE_BITMAP";
+	case gcvSURF_FLIP_BITMAP:
+		return "FLIP_BITMAP";
+	default:
+		return NULL;
+	}
+}
+
+static const char *
+viv_pool(gcePOOL pool)
+{
+	switch(pool) {
+	case gcvPOOL_UNKNOWN:
+		return "UNKNOWN";
+	case gcvPOOL_DEFAULT:
+		return "DEFAULT";
+	case gcvPOOL_LOCAL:
+		return "LOCAL";
+	case gcvPOOL_LOCAL_INTERNAL:
+		return "LOCAL_INTERNAL";
+	case gcvPOOL_LOCAL_EXTERNAL:
+		return "LOCAL_EXTERNAL";
+	case gcvPOOL_UNIFIED:
+		return "UNIFIED";
+	case gcvPOOL_SYSTEM:
+		return "SYSTEM";
+	case gcvPOOL_VIRTUAL:
+		return "VIRTUAL";
+	case gcvPOOL_USER:
+		return "USER";
+	case gcvPOOL_CONTIGUOUS:
+		return "CONTIGUOUS";
+	case gcvPOOL_DEFAULT_FORCE_CONTIGUOUS:
+		return "DEFAULT_FORCE_CONTIGUOUS";
+	case gcvPOOL_DEFAULT_FORCE_CONTIGUOUS_CACHEABLE:
+		return "DEFAULT_FORCE_CONTIGUOUS_CACHEABLE";
+	default:
+		return NULL;
+	}
+}
+
+static int
+hook_AllocateLinearVideoMemory_pre(const char *command, int hardware, void *data)
+{
+	struct  _gcsHAL_ALLOCATE_LINEAR_VIDEO_MEMORY *alloc = data;
+	const char *name = viv_hardware_type(hardware);
+	const char *type = viv_surf_type(alloc->type);
+	const char *pool = viv_pool(alloc->pool);
+
+	wrap_log("%s(%s) = {\n", command, name);
+	wrap_log("\t.bytes = 0x%08lX,\n", alloc->bytes);
+	wrap_log("\t.alignment = 0x%08lX,\n", alloc->alignment);
+	wrap_log("\t.type = %s,\n", type);
+	wrap_log("\t.pool = %s,\n", pool);
+	wrap_log("};\n");
+
+	return 0;
+}
+
+static int
+hook_AllocateLinearVideoMemory_post(const char *command, int hardware, void *data, int ioctl_ret)
+{
+	struct  _gcsHAL_ALLOCATE_LINEAR_VIDEO_MEMORY *alloc = data;
+	const char *name = viv_hardware_type(hardware);
+	const char *pool = viv_pool(alloc->pool);
+
+	wrap_log("%s(%s) = {\n", command, name);
+	wrap_log("\t.bytes = 0x%08lX,\n", alloc->bytes);
+	wrap_log("\t.pool = %s,\n", pool);
+	wrap_log("\t.node = 0x%08llX,\n", alloc->node);
+	wrap_log("} = %d;\n", ioctl_ret);
+
+	return 0;
+}
+
+static int
+hook_LockVideoMemory_pre(const char *command, int hardware, void *data)
+{
+	struct  _gcsHAL_LOCK_VIDEO_MEMORY *lock = data;
+	const char *name = viv_hardware_type(hardware);
+
+	wrap_log("%s(%s) = {\n", command, name);
+	wrap_log("\t.node = 0x%08lX,\n", lock->node);
+	wrap_log("\t.cacheable = 0x%08lX,\n", lock->cacheable);
+	wrap_log("};\n");
+
+	return 0;
+}
+
+static int
+hook_LockVideoMemory_post(const char *command, int hardware, void *data, int ioctl_ret)
+{
+	struct  _gcsHAL_LOCK_VIDEO_MEMORY *lock = data;
+	const char *name = viv_hardware_type(hardware);
+
+	wrap_log("%s(%s) = {\n", command, name);
+	wrap_log("\t.address = 0x%08lX,\n", lock->address);
+	wrap_log("\t.memory = 0x%08llX,\n", lock->memory);
+	wrap_log("} = %d;\n", ioctl_ret);
+
+	return 0;
+}
 
 struct {
 	int command;
@@ -374,19 +659,19 @@ struct {
 	{gcvHAL_QUERY_CHIP_IDENTITY, "QUERY_CHIP_IDENTITY", hook_empty_pre, hook_QueryChipIdentity_post},
 	{gcvHAL_ALLOCATE_NON_PAGED_MEMORY, "ALLOCATE_NON_PAGED_MEMORY", hook_unknown_pre, hook_unknown_post},
 	{gcvHAL_FREE_NON_PAGED_MEMORY, "FREE_NON_PAGED_MEMORY", hook_unknown_pre, hook_unknown_post},
-	{gcvHAL_ALLOCATE_CONTIGUOUS_MEMORY, "ALLOCATE_CONTIGUOUS_MEMORY", hook_unknown_pre, hook_unknown_post},
+	{gcvHAL_ALLOCATE_CONTIGUOUS_MEMORY, "ALLOCATE_CONTIGUOUS_MEMORY", hook_AllocateContiguousMemory_pre, hook_AllocateContiguousMemory_post},
 	{gcvHAL_FREE_CONTIGUOUS_MEMORY, "FREE_CONTIGUOUS_MEMORY", hook_unknown_pre, hook_unknown_post},
 	{gcvHAL_ALLOCATE_VIDEO_MEMORY, "ALLOCATE_VIDEO_MEMORY", hook_unknown_pre, hook_unknown_post},
-	{gcvHAL_ALLOCATE_LINEAR_VIDEO_MEMORY, "ALLOCATE_LINEAR_VIDEO_MEMORY", hook_unknown_pre, hook_unknown_post},
+	{gcvHAL_ALLOCATE_LINEAR_VIDEO_MEMORY, "ALLOCATE_LINEAR_VIDEO_MEMORY", hook_AllocateLinearVideoMemory_pre, hook_AllocateLinearVideoMemory_post},
 	{gcvHAL_FREE_VIDEO_MEMORY, "FREE_VIDEO_MEMORY", hook_unknown_pre, hook_unknown_post},
 	{gcvHAL_MAP_MEMORY, "MAP_MEMORY", hook_unknown_pre, hook_unknown_post},
 	{gcvHAL_UNMAP_MEMORY, "UNMAP_MEMORY", hook_unknown_pre, hook_unknown_post},
 	{gcvHAL_MAP_USER_MEMORY, "MAP_USER_MEMORY", hook_unknown_pre, hook_unknown_post},
 	{gcvHAL_UNMAP_USER_MEMORY, "UNMAP_USER_MEMORY", hook_unknown_pre, hook_unknown_post},
-	{gcvHAL_LOCK_VIDEO_MEMORY, "LOCK_VIDEO_MEMORY", hook_unknown_pre, hook_unknown_post},
+	{gcvHAL_LOCK_VIDEO_MEMORY, "LOCK_VIDEO_MEMORY", hook_LockVideoMemory_pre, hook_LockVideoMemory_post},
 	{gcvHAL_UNLOCK_VIDEO_MEMORY, "UNLOCK_VIDEO_MEMORY", hook_unknown_pre, hook_unknown_post},
 	{gcvHAL_EVENT_COMMIT, "EVENT_COMMIT", hook_unknown_pre, hook_unknown_post},
-	{gcvHAL_USER_SIGNAL, "USER_SIGNAL", hook_unknown_pre, hook_unknown_post},
+	{gcvHAL_USER_SIGNAL, "USER_SIGNAL", hook_UserSignal_pre, hook_UserSignal_post},
 	{gcvHAL_SIGNAL, "SIGNAL", hook_unknown_pre, hook_unknown_post},
 	{gcvHAL_WRITE_DATA, "WRITE_DATA", hook_unknown_pre, hook_unknown_post},
 	{gcvHAL_COMMIT, "COMMIT", hook_unknown_pre, hook_unknown_post},
@@ -413,14 +698,14 @@ struct {
 	{gcvHAL_DATABASE, "DATABASE", hook_unknown_pre, hook_unknown_post},
 	{gcvHAL_VERSION, "VERSION", hook_empty_pre, hook_Version_post},
 	{gcvHAL_CHIP_INFO, "CHIP_INFO", hook_empty_pre, hook_ChipInfo_post},
-	{gcvHAL_ATTACH, "ATTACH", hook_unknown_pre, hook_unknown_post},
+	{gcvHAL_ATTACH, "ATTACH", hook_empty_pre, hook_Attach_post},
 	{gcvHAL_DETACH, "DETACH", hook_unknown_pre, hook_unknown_post},
 	{gcvHAL_COMPOSE, "COMPOSE", hook_unknown_pre, hook_unknown_post},
 	{gcvHAL_SET_TIMEOUT, "SET_TIMEOUT", hook_unknown_pre, hook_unknown_post},
 	{gcvHAL_GET_FRAME_INFO, "GET_FRAME_INFO", hook_unknown_pre, hook_unknown_post},
 	{gcvHAL_GET_SHARED_INFO, "GET_SHARED_INFO", hook_unknown_pre, hook_unknown_post},
 	{gcvHAL_SET_SHARED_INFO, "SET_SHARED_INFO", hook_unknown_pre, hook_unknown_post},
-	{gcvHAL_QUERY_COMMAND_BUFFER, "QUERY_COMMAND_BUFFER", hook_unknown_pre, hook_unknown_post},
+	{gcvHAL_QUERY_COMMAND_BUFFER, "QUERY_COMMAND_BUFFER", hook_empty_pre, hook_QueryCommandBuffer_post},
 	{gcvHAL_COMMIT_DONE, "COMMIT_DONE", hook_unknown_pre, hook_unknown_post},
 	{gcvHAL_DUMP_GPU_STATE, "DUMP_GPU_STATE", hook_unknown_pre, hook_unknown_post},
 	{gcvHAL_DUMP_EVENT, "DUMP_EVENT", hook_unknown_pre, hook_unknown_post},
