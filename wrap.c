@@ -38,7 +38,7 @@ FILE *viv_wrap_log;
 static pthread_mutex_t wrap_log_mutex[1] = { PTHREAD_MUTEX_INITIALIZER };
 int frame_count;
 
-void
+static void
 wrap_log_open(void)
 {
 	char *filename;
@@ -60,11 +60,13 @@ wrap_log_open(void)
 		printf("viv_wrap: dumping to %s.\n", filename);
 }
 
-int
+static int
 wrap_log(const char *format, ...)
 {
 	va_list args;
 	int ret;
+
+	pthread_mutex_lock(wrap_log_mutex);
 
 	wrap_log_open();
 
@@ -72,28 +74,19 @@ wrap_log(const char *format, ...)
 	ret = vfprintf(viv_wrap_log, format, args);
 	va_end(args);
 
-	fflush(viv_wrap_log);
+	pthread_mutex_unlock(wrap_log_mutex);
 
 	return ret;
 }
 
 void
-wrap_log_start(void)
-{
-	pthread_mutex_lock(wrap_log_mutex);
-}
-
-void
-wrap_log_stop(void)
-{
-	pthread_mutex_unlock(wrap_log_mutex);
-}
-
-void
 wrap_log_flush(int signum)
 {
-	if (viv_wrap_log)
+	if (viv_wrap_log) {
+		pthread_mutex_lock(wrap_log_mutex);
 		fflush(viv_wrap_log);
+		pthread_mutex_unlock(wrap_log_mutex);
+	}
 
 	signal(SIGINT, SIG_DFL);
 }
@@ -267,91 +260,75 @@ viv_hardware_type(int type)
 }
 
 static int
-hook_unknown_pre(const char *command, int hardware, void *data)
+hook_unknown_pre(const char *command, const char *hardware, void *data)
 {
 	return -1;
 }
 
 static int
-hook_unknown_post(const char *command, int hardware, void *data, int ioctl_ret)
+hook_unknown_post(const char *command, const char *hardware, void *data, int ioctl_ret)
 {
 	return -1;
 }
 
 static int
-hook_empty_pre(const char *command, int hardware, void *data)
+hook_empty_pre(const char *command, const char *hardware, void *data)
 {
 	return 0;
 }
 
 #if 0
 static int
-hook_empty_post(const char *command, int hardware, void *data, int ioctl_ret)
+hook_empty_post(const char *command, const char *hardware, void *data, int ioctl_ret)
 {
 	return 0;
 }
 #endif
 
 static int
-hook_GetBaseAddress_post(const char *command, int hardware, void *data, int ioctl_ret)
+hook_GetBaseAddress_post(const char *command, const char *hardware, void *data, int ioctl_ret)
 {
 	struct _gcsHAL_GET_BASE_ADDRESS *address = data;
 
-	wrap_log_start();
-
 	wrap_log("%s = 0x%08X;\n", command, address->baseAddress);
-
-	wrap_log_stop();
 
 	return 0;
 }
 
 static int
-hook_Version_post(const char *command, int hardware, void *data, int ioctl_ret)
+hook_Version_post(const char *command, const char *hardware, void *data, int ioctl_ret)
 {
 	struct _gcsHAL_VERSION *version = data;
-
-	wrap_log_start();
 
 	wrap_log("%s = %d.%d.%d.%d;\n", command, version->major, version->minor,
 		 version->patch, version->build);
 
-	wrap_log_stop();
-
 	return 0;
 }
 
 static int
-hook_ChipInfo_post(const char *command, int hardware, void *data, int ioctl_ret)
+hook_ChipInfo_post(const char *command, const char *hardware, void *data, int ioctl_ret)
 {
 	struct _gcsHAL_CHIP_INFO *info = data;
 	int i;
 
-	wrap_log_start();
-
 	wrap_log("%s[%d] = {\n", command, info->count);
 	for (i = 0; i < info->count; i++) {
-		const char *name = viv_hardware_type(info->types[i]);
-
-		if (name)
-			wrap_log("\t%s, /* %d */\n", name, i);
+		if (hardware)
+			wrap_log("\t%s, /* %d */\n", hardware, i);
 		else
-			wrap_log("\tNULL, /* %d */\n", name, i);
+			wrap_log("\tNULL, /* %d */\n", hardware, i);
 	}
 
 	wrap_log("};\n");
-
-	wrap_log_stop();
 
 	return 0;
 }
 
 static int
-hook_QueryVideoMemory_post(const char *command, int hardware, void *data, int ioctl_ret)
+hook_QueryVideoMemory_post(const char *command, const char *hardware, void *data, int ioctl_ret)
 {
 	struct _gcsHAL_QUERY_VIDEO_MEMORY *memory = data;
-
-	wrap_log_start();
 
 	wrap_log("%s = {\n", command);
 	wrap_log("\t.internalPhysical = 0x%08lX,\n", memory->internalPhysical);
@@ -362,20 +339,15 @@ hook_QueryVideoMemory_post(const char *command, int hardware, void *data, int io
 	wrap_log("\t.contiguousSize = %lld,\n", memory->contiguousSize);
 	wrap_log("};\n");
 
-	wrap_log_stop();
-
 	return 0;
 }
 
 static int
-hook_QueryChipIdentity_post(const char *command, int hardware, void *data, int ioctl_ret)
+hook_QueryChipIdentity_post(const char *command, const char *hardware, void *data, int ioctl_ret)
 {
 	struct _gcsHAL_QUERY_CHIP_IDENTITY *identity = data;
-	const char *name = viv_hardware_type(hardware);
 
-	wrap_log_start();
-
-	wrap_log("%s(%s) = {\n", command, name);
+	wrap_log("%s(%s) = {\n", command, hardware);
 	wrap_log("\t.chipModel = %d,\n", identity->chipModel);
 	wrap_log("\t.chipRevision = 0x%08lX,\n", identity->chipRevision);
 	wrap_log("\t.chipFeatures = 0x%08lX,\n", identity->chipFeatures);
@@ -399,138 +371,124 @@ hook_QueryChipIdentity_post(const char *command, int hardware, void *data, int i
 	wrap_log("\t.chip2DControl = 0x%08lX,\n", identity->chip2DControl);
 	wrap_log("};\n");
 
-	wrap_log_stop();
-
 	return 0;
 }
 
 static int
-hook_Attach_post(const char *command, int hardware, void *data, int ioctl_ret)
+hook_Attach_post(const char *command, const char *hardware, void *data, int ioctl_ret)
 {
 	struct _gcsHAL_ATTACH *attach = data;
-	const char *name = viv_hardware_type(hardware);
 
-	wrap_log_start();
-
-	wrap_log("%s(%s) = {\n", command, name);
-	wrap_log("\t.context = 0x%08lX,\n", attach->context);
-	wrap_log("\t.stateCount = %lld,\n", attach->stateCount);
-	wrap_log("};\n");
-
-	wrap_log_stop();
+	wrap_log("%s(%s, context 0x%08lX, stateCount %lld) = %d;\n",
+		 command, hardware, attach->context, attach->stateCount, ioctl_ret);
 
 	return 0;
 }
 
 static int
-hook_AllocateContiguousMemory_pre(const char *command, int hardware, void *data)
+hook_AllocateContiguousMemory_pre(const char *command, const char *hardware, void *data)
 {
 	struct  _gcsHAL_ALLOCATE_CONTIGUOUS_MEMORY *alloc = data;
-	const char *name = viv_hardware_type(hardware);
 
-	wrap_log_start();
-
-	wrap_log("%s(%s) = {\n", command, name);
-	wrap_log("\t.bytes = 0x%08llX,\n", alloc->bytes);
-	wrap_log("};\n");
-
-	wrap_log_stop();
+	wrap_log("%s(%s, bytes 0x%llX);\n", command, hardware, alloc->bytes);
 
 	return 0;
 }
 
 static int
-hook_AllocateContiguousMemory_post(const char *command, int hardware, void *data, int ioctl_ret)
+hook_AllocateContiguousMemory_post(const char *command, const char *hardware, void *data, int ioctl_ret)
 {
 	struct  _gcsHAL_ALLOCATE_CONTIGUOUS_MEMORY *alloc = data;
-	const char *name = viv_hardware_type(hardware);
 
-	wrap_log_start();
-
-	wrap_log("%s(%s) = {\n", command, name);
-	wrap_log("\t.bytes = 0x%08llX,\n", alloc->bytes);
-	wrap_log("\t.address = 0x%08lX,\n", alloc->address);
-	wrap_log("\t.physical = 0x%08lX,\n", alloc->physical);
-	wrap_log("\t.logical = 0x%08llX,\n", alloc->logical);
-	wrap_log("};\n");
-
-	wrap_log_stop();
+	wrap_log("%s(%s, bytes 0x%llX, address 0x%08lX, physical 0x%08lX, logical 0x%08llX) = %d;\n",
+		 command, hardware, alloc->bytes, alloc->address, alloc->physical, alloc->logical, ioctl_ret);
 
 	return 0;
 }
 
-static const char *
-viv_user_signal_name(gceUSER_SIGNAL_COMMAND_CODES command)
+static int
+hook_UserSignal_pre(const char *command, const char *hardware, void *data)
 {
-	switch(command) {
+	struct  _gcsHAL_USER_SIGNAL *signal = data;
+
+	switch(signal->command) {
 	case gcvUSER_SIGNAL_CREATE:
-		return "CREATE";
-	case gcvUSER_SIGNAL_DESTROY:
-		return "DESTROY";
-	case gcvUSER_SIGNAL_SIGNAL:
-		return "SIGNAL";
-	case gcvUSER_SIGNAL_WAIT:
-		return "WAIT";
-	case gcvUSER_SIGNAL_MAP:
-		return "MAP";
+		wrap_log("%s(%s, CREATE, manualreset %d);\n",
+			 command, hardware, signal->manualReset);
+		break;
+        case gcvUSER_SIGNAL_DESTROY:
+		wrap_log("%s(%s, DESTROY, id 0x%08lX);\n",
+			 command, hardware, signal->id);
+		break;
+        case gcvUSER_SIGNAL_SIGNAL:
+		wrap_log("%s(%s, SIGNAL, id 0x%08lX, state %d);\n",
+			 command, hardware, signal->id, signal->state);
+		break;
+        case gcvUSER_SIGNAL_WAIT:
+		wrap_log("%s(%s, WAIT, id 0x%08lX, wait %d);\n",
+			 command, hardware, signal->id, signal->wait);
+		break;
+        case gcvUSER_SIGNAL_MAP:
+		wrap_log("%s(%s, MAP, id 0x%08lX);\n",
+			 command, hardware, signal->id);
+		break;
 	case gcvUSER_SIGNAL_UNMAP:
-		return "UNMAP";
+		wrap_log("%s(%s, UNMAP, id 0x%08lX);\n",
+			 command, hardware, signal->id);
+		break;
 	default:
-		return NULL;
+		fprintf(stderr, "%s: unknown signal %d\n", __func__, signal->command);
+		break;
 	}
-}
-
-static int
-hook_UserSignal_pre(const char *command, int hardware, void *data)
-{
-	struct  _gcsHAL_USER_SIGNAL *signal = data;
-	const char *name = viv_hardware_type(hardware);
-	const char *signal_command = viv_user_signal_name(signal->command);
-
-	wrap_log_start();
-
-	wrap_log("%s(%s) = {\n", command, name);
-	wrap_log("\t.command = %s,\n", signal_command);
-	wrap_log("\t.id = 0x%08lX,\n", signal->id);
-	wrap_log("\t.manualReset = %d,\n", signal->manualReset);
-	wrap_log("\t.wait = 0x%08lX,\n", signal->wait);
-	wrap_log("\t.state = %d,\n", signal->state);
-	wrap_log("};\n");
-
-	wrap_log_stop();
 
 	return 0;
 }
 
 static int
-hook_UserSignal_post(const char *command, int hardware, void *data, int ioctl_ret)
+hook_UserSignal_post(const char *command, const char *hardware, void *data, int ioctl_ret)
 {
 	struct  _gcsHAL_USER_SIGNAL *signal = data;
-	const char *name = viv_hardware_type(hardware);
-	const char *signal_command = viv_user_signal_name(signal->command);
 
-	wrap_log_start();
-
-	wrap_log("%s(%s) = {\n", command, name);
-	wrap_log("\t.command = %s,\n", signal_command);
-	wrap_log("\t.id = 0x%08lX,\n", signal->id);
-	wrap_log("} = %d;\n", ioctl_ret);
-
-	wrap_log_stop();
+	switch(signal->command) {
+	case gcvUSER_SIGNAL_CREATE:
+		wrap_log("%s(%s, CREATE, id 0x%08lX) = %d;\n",
+			 command, hardware, signal->id, ioctl_ret);
+		break;
+        case gcvUSER_SIGNAL_DESTROY:
+		wrap_log("%s(%s, DESTROY, id 0x%08lX) = %d;\n",
+			 command, hardware, signal->id, ioctl_ret);
+		break;
+        case gcvUSER_SIGNAL_SIGNAL:
+		wrap_log("%s(%s, SIGNAL, id 0x%08lX) = %d;\n",
+			 command, hardware, signal->id, ioctl_ret);
+		break;
+        case gcvUSER_SIGNAL_WAIT:
+		wrap_log("%s(%s, WAIT, id 0x%08lX) = %d;\n",
+			 command, hardware, signal->id, ioctl_ret);
+		break;
+        case gcvUSER_SIGNAL_MAP:
+		wrap_log("%s(%s, MAP, id 0x%08lX) = %d;\n",
+			 command, hardware, signal->id, ioctl_ret);
+		break;
+	case gcvUSER_SIGNAL_UNMAP:
+		wrap_log("%s(%s, UNMAP, id 0x%08lX) = %d;\n",
+			 command, hardware, signal->id, ioctl_ret);
+		break;
+	default:
+		fprintf(stderr, "%s: unknown signal %d\n", __func__, signal->command);
+		break;
+	}
 
 	return 0;
 }
 
 static int
-hook_QueryCommandBuffer_post(const char *command, int hardware, void *data, int ioctl_ret)
+hook_QueryCommandBuffer_post(const char *command, const char *hardware, void *data, int ioctl_ret)
 {
 	struct _gcsHAL_QUERY_COMMAND_BUFFER *query = data;
 	struct _gcsCOMMAND_BUFFER_INFO *info = &query->information;
-	const char *name = viv_hardware_type(hardware);
 
-	wrap_log_start();
-
-	wrap_log("%s(%s) = {{\n", command, name);
+	wrap_log("%s(%s) = {{\n", command, hardware);
 	wrap_log("\t.feBufferInt = 0x%08lX,\n", info->feBufferInt);
 	wrap_log("\t.tsOverflowInt = 0x%08lX,\n", info->tsOverflowInt);
 	wrap_log("\t.addressMask = 0x%08lX,\n", info->addressMask);
@@ -547,11 +505,10 @@ hook_QueryCommandBuffer_post(const char *command, int hardware, void *data, int 
 	wrap_log("\t.dynamicTailSize = 0x%08lX,\n", info->dynamicTailSize);
 	wrap_log("}};\n");
 
-	wrap_log_stop();
-
 	return 0;
 }
 
+#if 0
 static const char *
 viv_surf_type(gceSURF_TYPE type)
 {
@@ -651,254 +608,152 @@ viv_pool(gcePOOL pool)
 		return NULL;
 	}
 }
+#endif
 
 static int
-hook_AllocateLinearVideoMemory_pre(const char *command, int hardware, void *data)
+hook_AllocateLinearVideoMemory_pre(const char *command, const char *hardware, void *data)
 {
 	struct _gcsHAL_ALLOCATE_LINEAR_VIDEO_MEMORY *alloc = data;
-	const char *name = viv_hardware_type(hardware);
-	const char *type = viv_surf_type(alloc->type);
-	const char *pool = viv_pool(alloc->pool);
 
-	wrap_log_start();
-
-	wrap_log("%s(%s) = {\n", command, name);
-	wrap_log("\t.bytes = 0x%08lX,\n", alloc->bytes);
-	wrap_log("\t.alignment = 0x%08lX,\n", alloc->alignment);
-	wrap_log("\t.type = %s,\n", type);
-	wrap_log("\t.pool = %s,\n", pool);
-	wrap_log("};\n");
-
-	wrap_log_stop();
+	wrap_log("%s(%s, bytes 0x%lX, alignment %d, type %d, pool %d);\n",
+		 command, hardware, alloc->bytes, alloc->alignment, alloc->type, alloc->pool);
 
 	return 0;
 }
 
 static int
-hook_AllocateLinearVideoMemory_post(const char *command, int hardware, void *data, int ioctl_ret)
+hook_AllocateLinearVideoMemory_post(const char *command, const char *hardware, void *data, int ioctl_ret)
 {
 	struct _gcsHAL_ALLOCATE_LINEAR_VIDEO_MEMORY *alloc = data;
-	const char *name = viv_hardware_type(hardware);
-	const char *pool = viv_pool(alloc->pool);
 
-	wrap_log_start();
-
-	wrap_log("%s(%s) = {\n", command, name);
-	wrap_log("\t.bytes = 0x%08lX,\n", alloc->bytes);
-	wrap_log("\t.pool = %s,\n", pool);
-	wrap_log("\t.node = 0x%08llX,\n", alloc->node);
-	wrap_log("} = %d;\n", ioctl_ret);
-
-	wrap_log_stop();
+	wrap_log("%s(%s, bytes 0x%lX, type %d, pool %d, node 0x%08llX) = %d;\n",
+		 command, hardware, alloc->bytes, alloc->type, alloc->pool, alloc->node, ioctl_ret);
 
 	return 0;
 }
 
 static int
-hook_LockVideoMemory_pre(const char *command, int hardware, void *data)
+hook_LockVideoMemory_pre(const char *command, const char *hardware, void *data)
 {
 	struct _gcsHAL_LOCK_VIDEO_MEMORY *lock = data;
-	const char *name = viv_hardware_type(hardware);
 
-	wrap_log_start();
-
-	wrap_log("%s(%s) = {\n", command, name);
-	wrap_log("\t.node = 0x%08lX,\n", lock->node);
-	wrap_log("\t.cacheable = 0x%08lX,\n", lock->cacheable);
-	wrap_log("};\n");
-
-	wrap_log_stop();
+	wrap_log("%s(%s, node 0x%llX, cacheable %d);\n",
+		 command, hardware, lock->node, lock->cacheable);
 
 	return 0;
 }
 
 static int
-hook_LockVideoMemory_post(const char *command, int hardware, void *data, int ioctl_ret)
+hook_LockVideoMemory_post(const char *command, const char *hardware, void *data, int ioctl_ret)
 {
 	struct _gcsHAL_LOCK_VIDEO_MEMORY *lock = data;
-	const char *name = viv_hardware_type(hardware);
 
-	wrap_log_start();
-
-	wrap_log("%s(%s) = {\n", command, name);
-	wrap_log("\t.address = 0x%08lX,\n", lock->address);
-	wrap_log("\t.memory = 0x%08llX,\n", lock->memory);
-	wrap_log("} = %d;\n", ioctl_ret);
-
-	wrap_log_stop();
+	wrap_log("%s(%s, node 0x%llX, address 0x%08lX, memory 0x%08llX) = %d\n",
+		 command, hardware, lock->node, lock->address, lock->memory, ioctl_ret);
 
 	return 0;
 }
 
 static int
-hook_Commit_pre(const char *command, int hardware, void *data)
+hook_Commit_pre(const char *command, const char *hardware, void *data)
 {
 	struct _gcsHAL_COMMIT *commit = data;
-	const char *name = viv_hardware_type(hardware);
 
-	wrap_log_start();
-
-	wrap_log("%s(%s) = {\n", command, name);
-	wrap_log("\t.queue = 0x%08llX,\n", commit->queue);
-	wrap_log("};\n");
-
-	wrap_log_stop();
+	wrap_log("%s(%s, queue 0x%08llX);\n",
+		 command, hardware, commit->queue);
 
 	return 0;
 }
 
 static int
-hook_Commit_post(const char *command, int hardware, void *data, int ioctl_ret)
+hook_Commit_post(const char *command, const char *hardware, void *data, int ioctl_ret)
 {
 	struct _gcsHAL_COMMIT *commit = data;
-	const char *name = viv_hardware_type(hardware);
 
-	wrap_log_start();
-
-	wrap_log("%s(%s) = {\n", command, name);
-	wrap_log("\t.queue = 0x%08llX,\n", commit->queue);
-	wrap_log("} = %d;\n", ioctl_ret);
-
-	wrap_log_stop();
+	wrap_log("%s(%s, queue 0x%08llX) = %d;\n",
+		 command, hardware, commit->queue, ioctl_ret);
 
 	return 0;
 }
 
 static int
-hook_UnlockVideoMemory_pre(const char *command, int hardware, void *data)
+hook_UnlockVideoMemory_pre(const char *command, const char *hardware, void *data)
 {
 	struct _gcsHAL_UNLOCK_VIDEO_MEMORY *unlock = data;
-	const char *name = viv_hardware_type(hardware);
-	const char *type = viv_surf_type(unlock->type);
 
-	wrap_log_start();
-
-	wrap_log("%s(%s) = {\n", command, name);
-	wrap_log("\t.node = 0x%08llX,\n", unlock->node);
-	wrap_log("\t.type = %s,\n", type);
-	wrap_log("\t.asynchroneous = 0x%08llX,\n", unlock->asynchroneous);
-	wrap_log("};\n");
-
-	wrap_log_stop();
+	wrap_log("%s(%s, node 0x%08llX, type %d, async %d);\n",
+		 command, hardware, unlock->node, unlock->type, unlock->asynchroneous);
 
 	return 0;
 }
 
 static int
-hook_UnlockVideoMemory_post(const char *command, int hardware, void *data, int ioctl_ret)
+hook_UnlockVideoMemory_post(const char *command, const char *hardware, void *data, int ioctl_ret)
 {
 	struct _gcsHAL_UNLOCK_VIDEO_MEMORY *unlock = data;
-	const char *name = viv_hardware_type(hardware);
 
-	wrap_log_start();
-
-	wrap_log("%s(%s) = {\n", command, name);
-	wrap_log("\t.node = 0x%08llX,\n", unlock->node);
-	wrap_log("} = %d;\n", ioctl_ret);
-
-	wrap_log_stop();
+	wrap_log("%s(%s, node 0x%08llX) = %d;\n", command, hardware, unlock->node, ioctl_ret);
 
 	return 0;
 }
 
 static int
-hook_EventCommit_pre(const char *command, int hardware, void *data)
+hook_EventCommit_pre(const char *command, const char *hardware, void *data)
 {
 	struct _gcsHAL_EVENT_COMMIT *commit = data;
-	const char *name = viv_hardware_type(hardware);
 
-	wrap_log_start();
-
-	wrap_log("%s(%s) = {\n", command, name);
-	wrap_log("\t.queue = 0x%08llX,\n", commit->queue);
-	wrap_log("};\n");
-
-	wrap_log_stop();
+	wrap_log("%s(%s, queue 0x%08llX);\n", command, hardware, commit->queue);
 
 	return 0;
 }
 
 static int
-hook_EventCommit_post(const char *command, int hardware, void *data, int ioctl_ret)
+hook_EventCommit_post(const char *command, const char *hardware, void *data, int ioctl_ret)
 {
 	struct _gcsHAL_EVENT_COMMIT *commit = data;
-	const char *name = viv_hardware_type(hardware);
 
-	wrap_log_start();
-
-	wrap_log("%s(%s) = {\n", command, name);
-	wrap_log("\t.queue = 0x%08llX,\n", commit->queue);
-	wrap_log("} = %d;\n", ioctl_ret);
-
-	wrap_log_stop();
+	wrap_log("%s(%s, queue 0x%08llX) = %d;\n", command, hardware, commit->queue, ioctl_ret);
 
 	return 0;
 }
 
 static int
-hook_Detach_pre(const char *command, int hardware, void *data)
+hook_Detach_pre(const char *command, const char *hardware, void *data)
 {
 	struct _gcsHAL_DETACH *detach = data;
-	const char *name = viv_hardware_type(hardware);
 
-	wrap_log_start();
-
-	wrap_log("%s(%s) = {\n", command, name);
-	wrap_log("\t.context = 0x%08llX,\n", detach->context);
-	wrap_log("};\n");
-
-	wrap_log_stop();
+	wrap_log("%s(%s, context 0x%08lX);\n", command, hardware, detach->context);
 
 	return 0;
 }
 
 static int
-hook_Detach_post(const char *command, int hardware, void *data, int ioctl_ret)
+hook_Detach_post(const char *command, const char *hardware, void *data, int ioctl_ret)
 {
 	struct _gcsHAL_DETACH *detach = data;
-	const char *name = viv_hardware_type(hardware);
 
-	wrap_log_start();
-
-	wrap_log("%s(%s) = {\n", command, name);
-	wrap_log("\t.context = 0x%08llX,\n", detach->context);
-	wrap_log("} = %d;\n", ioctl_ret);
-
-	wrap_log_stop();
+	wrap_log("%s(%s, context 0x%08lX) = %d;\n",
+		 command, hardware, detach->context, ioctl_ret);
 
 	return 0;
 }
 
 static int
-hook_FreeVideoMemory_pre(const char *command, int hardware, void *data)
+hook_FreeVideoMemory_pre(const char *command, const char *hardware, void *data)
 {
 	struct _gcsHAL_FREE_VIDEO_MEMORY *free = data;
-	const char *name = viv_hardware_type(hardware);
 
-	wrap_log_start();
-
-	wrap_log("%s(%s) = {\n", command, name);
-	wrap_log("\t.node = 0x%08llX,\n", free->node);
-	wrap_log("};\n");
-
-	wrap_log_stop();
+	wrap_log("%s(%s, node 0x%08llX);\n", command, hardware, free->node);
 
 	return 0;
 }
 
 static int
-hook_FreeVideoMemory_post(const char *command, int hardware, void *data, int ioctl_ret)
+hook_FreeVideoMemory_post(const char *command, const char *hardware, void *data, int ioctl_ret)
 {
 	struct _gcsHAL_FREE_VIDEO_MEMORY *free = data;
-	const char *name = viv_hardware_type(hardware);
 
-	wrap_log_start();
-
-	wrap_log("%s(%s) = {\n", command, name);
-	wrap_log("\t.node = 0x%08llX,\n", free->node);
-	wrap_log("} = %d;\n", ioctl_ret);
-
-	wrap_log_stop();
+	wrap_log("%s(%s, node 0x%08llX) = %d;\n", command, hardware, free->node, ioctl_ret);
 
 	return 0;
 }
@@ -906,8 +761,8 @@ hook_FreeVideoMemory_post(const char *command, int hardware, void *data, int ioc
 struct {
 	int command;
 	char *name;
-	int (*pre) (const char *command, int hardware, void *data);
-	int (*post) (const char *command, int hardware, void *data, int ioctl_ret);
+	int (*pre) (const char *command, const char *hardware, void *data);
+	int (*post) (const char *command, const char *hardware, void *data, int ioctl_ret);
 } command_table[] = {
 	{gcvHAL_QUERY_VIDEO_MEMORY, "QUERY_VIDEO_MEMORY", hook_empty_pre, hook_QueryVideoMemory_post},
 	{gcvHAL_QUERY_CHIP_IDENTITY, "QUERY_CHIP_IDENTITY", hook_empty_pre, hook_QueryChipIdentity_post},
@@ -1027,7 +882,7 @@ galcore_ioctl(int request, void *data)
 		return -1;
 	}
 
-	hook_ret = command_table[input->command].pre(command_name, input->hardwareType, (void *) &input->u);
+	hook_ret = command_table[input->command].pre(command_name, hardware, (void *) &input->u);
 	if (hook_ret) {
 		fprintf(stderr, "pre hook for %s(%s) failed.\n", command_name, hardware);
 		return -1;
@@ -1035,7 +890,7 @@ galcore_ioctl(int request, void *data)
 
 	ret = orig_ioctl(dev_galcore_fd, request, data);
 
-	hook_ret = command_table[input->command].post(command_name, input->hardwareType, (void *) &output->u, ret);
+	hook_ret = command_table[input->command].post(command_name, hardware, (void *) &output->u, ret);
 	if (hook_ret) {
 		fprintf(stderr, "post hook for %s(%s) failed.\n", command_name, hardware);
 		return -1;
