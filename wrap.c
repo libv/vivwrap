@@ -27,6 +27,7 @@
 #include <sys/ioctl.h>
 #include <asm/ioctl.h>
 #include <stdint.h>
+#include <signal.h>
 
 /*
  *
@@ -79,17 +80,22 @@ wrap_log(const char *format, ...)
 void
 wrap_log_start(void)
 {
-	wrap_log_open();
 	pthread_mutex_lock(wrap_log_mutex);
 }
 
 void
 wrap_log_stop(void)
 {
-	wrap_log_open();
-
-	fflush(viv_wrap_log);
 	pthread_mutex_unlock(wrap_log_mutex);
+}
+
+void
+wrap_log_flush(int signum)
+{
+	if (viv_wrap_log)
+		fflush(viv_wrap_log);
+
+	signal(SIGINT, SIG_DFL);
 }
 
 /*
@@ -147,8 +153,10 @@ open(const char* path, int flags, ...)
 	if (!strcmp(path, "/dev/galcore"))
 		galcore = 1;
 
-	if (!orig_open)
+	if (!orig_open) {
 		orig_open = libc_dlsym(__func__);
+		signal(SIGINT, wrap_log_flush);
+	}
 
 	if (flags & O_CREAT) {
 		va_list  args;

@@ -1,4 +1,4 @@
-CFLAGS += -Wall -g -O0 -fPIC
+CFLAGS += -Wall -O3 -fPIC
 
 all: libvivwrap.so
 
