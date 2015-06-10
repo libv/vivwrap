@@ -1,0 +1,46 @@
+vivwrap is a quick vivante IOCTL dumping tool.
+
+Features:
+---------
+
+Very few.
+
+This was written for a very specific version of the vivante kernel driver for
+which the headers are directly included. It just provides a high level trace
+of the ioctls as the way vivante uses ioctls is very very broken and not very
+helpful for debugging.
+
+This is by no means a command stream dumper.
+
+By superimposing symbols (through LD_PRELOAD), it could also be possible to
+correlate GL/Toolkit/Display server calls to the vivante ioctls to get a
+clearer picture of what exactly is going wrong.
+
+Compatibility:
+--------------
+
+Very limited. The included headers were taken straight from a vendor kernel
+tree. Version of the galcore driver is 4.6.9.9754.
+
+Build:
+------
+
+Very rudimentary.
+
+Just add your toolchain to your path and run:
+
+     make CROSS_COMPILE=arm-linux-gnueabi-
+
+Running:
+--------
+
+Run your target application with:
+
+    LD_PRELOAD=/path/to/libvivwrap.so target_application
+
+And you should see /tmp/viv_wrap.log start filling up.
+
+You can alter the log destination by setting the VIV_WRAP_LOG environment
+variable.
+
+-- libv.

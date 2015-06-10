@@ -16,6 +16,14 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
+/*
+ * Code stolen from my lima driver wrapping library.
+ *
+ * Quick tool to show in which ioctl the vivante driver hangs. No full
+ * command stream dump is needed. Also, by not using ptrace, vvivante
+ * ioctls can theoretically by logged right next to the GL or Qt calls.
+ */
+
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -48,7 +56,7 @@ wrap_log_open(void)
 
 	filename = getenv("VIV_WRAP_LOG");
 	if (!filename)
-		filename = "/home/root/viv_wrap.log";
+		filename = "/tmp/viv_wrap.log";
 
 	viv_wrap_log = fopen(filename, "w");
 	if (!viv_wrap_log) {
@@ -84,6 +92,7 @@ wrap_log_flush(int signum)
 {
 	if (viv_wrap_log) {
 		pthread_mutex_lock(wrap_log_mutex);
+		fprintf(viv_wrap_log, "SIG_INT!\n");
 		fflush(viv_wrap_log);
 		pthread_mutex_unlock(wrap_log_mutex);
 	}
@@ -208,8 +217,9 @@ ioctl(int fd, unsigned long request, ...)
 	if (!orig_ioctl)
 		orig_ioctl = libc_dlsym(__func__);
 
-	/* Vivante is soo broken. */
-	if (ioc_size || (fd == dev_galcore_fd)) {
+	/* Vivante is soo broken, as is fbdev. */
+	if (ioc_size || (fd == dev_galcore_fd) ||
+	    ((request & 0xFFC8) == 0x4600)) {
 		va_list args;
 		void *ptr;
 
@@ -507,108 +517,6 @@ hook_QueryCommandBuffer_post(const char *command, const char *hardware, void *da
 
 	return 0;
 }
-
-#if 0
-static const char *
-viv_surf_type(gceSURF_TYPE type)
-{
-	switch(type) {
-	case gcvSURF_TYPE_UNKNOWN:
-		return "TYPE_UNKNOWN";
-	case gcvSURF_INDEX:
-		return "INDEX";
-	case gcvSURF_VERTEX:
-		return "VERTEX";
-	case gcvSURF_TEXTURE:
-		return "TEXTURE";
-	case gcvSURF_RENDER_TARGET:
-		return "RENDER_TARGET";
-	case gcvSURF_DEPTH:
-		return "DEPTH";
-	case gcvSURF_BITMAP:
-		return "BITMAP";
-	case gcvSURF_TILE_STATUS:
-		return "TILE_STATUS";
-	case gcvSURF_MASK:
-		return "MASK";
-	case gcvSURF_SCISSOR:
-		return "SCISSOR";
-	case gcvSURF_HIERARCHICAL_DEPTH:
-		return "HIERARCHICAL_DEPTH";
-	case gcvSURF_NUM_TYPES:
-		return "NUM_TYPES";
-	case gcvSURF_NO_TILE_STATUS:
-		return "NO_TILE_STATUS";
-	case gcvSURF_NO_VIDMEM:
-		return "NO_VIDMEM";
-	case gcvSURF_CACHEABLE:
-		return "CACHEABLE";
-	case gcvSURF_FLIP:
-		return "FLIP";
-	case gcvSURF_TILE_STATUS_DIRTY:
-		return "TILE_STATUS_DIRTY";
-	case gcvSURF_LINEAR:
-		return "LINEAR";
-	case gcvSURF_VG:
-		return "VG";
-	case gcvSURF_TEXTURE_LINEAR:
-		return "TEXTURE_LINEAR";
-	case gcvSURF_RENDER_TARGET_NO_TILE_STATUS:
-		return "RENDER_TARGET_NO_TILE_STATUS";
-	case gcvSURF_RENDER_TARGET_TS_DIRTY:
-		return "RENDER_TARGET_TS_DIRTY";
-	case gcvSURF_DEPTH_NO_TILE_STATUS:
-		return "DEPTH_NO_TILE_STATUS";
-	case gcvSURF_DEPTH_TS_DIRTY:
-		return "DEPTH_TS_DIRTY";
-	case gcvSURF_BITMAP_NO_VIDMEM:
-		return "BITMAP_NO_VIDMEM";
-	case gcvSURF_TEXTURE_NO_VIDMEM:
-		return "TEXTURE_NO_VIDMEM";
-	case gcvSURF_CACHEABLE_BITMAP_NO_VIDMEM:
-		return "CACHEABLE_BITMAP_NO_VIDMEM";
-	case gcvSURF_CACHEABLE_BITMAP:
-		return "CACHEABLE_BITMAP";
-	case gcvSURF_FLIP_BITMAP:
-		return "FLIP_BITMAP";
-	default:
-		return NULL;
-	}
-}
-
-static const char *
-viv_pool(gcePOOL pool)
-{
-	switch(pool) {
-	case gcvPOOL_UNKNOWN:
-		return "UNKNOWN";
-	case gcvPOOL_DEFAULT:
-		return "DEFAULT";
-	case gcvPOOL_LOCAL:
-		return "LOCAL";
-	case gcvPOOL_LOCAL_INTERNAL:
-		return "LOCAL_INTERNAL";
-	case gcvPOOL_LOCAL_EXTERNAL:
-		return "LOCAL_EXTERNAL";
-	case gcvPOOL_UNIFIED:
-		return "UNIFIED";
-	case gcvPOOL_SYSTEM:
-		return "SYSTEM";
-	case gcvPOOL_VIRTUAL:
-		return "VIRTUAL";
-	case gcvPOOL_USER:
-		return "USER";
-	case gcvPOOL_CONTIGUOUS:
-		return "CONTIGUOUS";
-	case gcvPOOL_DEFAULT_FORCE_CONTIGUOUS:
-		return "DEFAULT_FORCE_CONTIGUOUS";
-	case gcvPOOL_DEFAULT_FORCE_CONTIGUOUS_CACHEABLE:
-		return "DEFAULT_FORCE_CONTIGUOUS_CACHEABLE";
-	default:
-		return NULL;
-	}
-}
-#endif
 
 static int
 hook_AllocateLinearVideoMemory_pre(const char *command, const char *hardware, void *data)
